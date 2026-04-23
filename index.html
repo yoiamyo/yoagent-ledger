@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="記帳">
+  <title>記帳</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f0f0f; --surface: #1c1c1e; --surface2: #2c2c2e; --surface3: #3a3a3c;
+      --border: #38383a; --text: #ffffff; --text2: #ababab; --text3: #636366;
+      --accent: #7C6CF0; --income: #34c759; --expense: #ff453a; --warning: #ff9f0a;
+      --radius: 14px; --radius-sm: 10px; --nav-h: 80px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html,body { height:100%; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif; background:var(--bg); color:var(--text); max-width:430px; margin:0 auto; min-height:100vh; overflow-x:hidden; }
+    #app { display:flex; flex-direction:column; min-height:100vh; }
+    main { flex:1; padding:16px 16px calc(var(--nav-h) + 16px); overflow-y:auto; }
+    .view { display:none; }
+    .view.active { display:block; }
+
+    nav { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:430px; background:rgba(28,28,30,.92); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-top:1px solid var(--border); display:flex; justify-content:space-around; padding:8px 0 20px; z-index:100; }
+    .nav-item { display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; padding:4px 16px; border-radius:8px; background:none; border:none; color:var(--text3); }
+    .nav-item.active { color:var(--accent); }
+    .nav-item svg { width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+    .nav-item label { font-size:10px; cursor:pointer; }
+
+    .page-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .page-title { font-size:28px; font-weight:700; }
+    .header-btn { background:var(--surface2); border:none; color:var(--text); width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center; }
+
+    .card { background:var(--surface); border-radius:var(--radius); padding:16px; margin-bottom:12px; }
+    .card-sm { padding:12px; }
+
+    .balance-card { background:linear-gradient(135deg,var(--accent) 0%,#5b4de0 100%); border-radius:var(--radius); padding:24px; margin-bottom:16px; text-align:center; }
+    .balance-label { font-size:13px; opacity:.8; margin-bottom:6px; }
+    .balance-amount { font-size:42px; font-weight:700; letter-spacing:-1px; }
+    .balance-sub { display:flex; justify-content:center; gap:32px; margin-top:16px; }
+    .balance-sub-item { text-align:center; }
+    .balance-sub-item .lbl { font-size:11px; opacity:.7; }
+    .balance-sub-item .val { font-size:18px; font-weight:600; }
+
+    .chart-controls { display:flex; gap:8px; margin-bottom:12px; }
+    .chip { padding:6px 14px; border-radius:20px; font-size:13px; cursor:pointer; background:var(--surface2); color:var(--text2); border:none; transition:all .15s; }
+    .chip.active { background:var(--accent); color:#fff; }
+    .chart-wrap { position:relative; height:220px; }
+
+    .tx-item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
+    .tx-item:last-child { border-bottom:none; }
+    .tx-icon { width:44px; height:44px; border-radius:12px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+    .tx-info { flex:1; min-width:0; }
+    .tx-name { font-size:15px; font-weight:500; }
+    .tx-meta { font-size:12px; color:var(--text2); margin-top:2px; }
+    .tx-amount { font-size:16px; font-weight:600; white-space:nowrap; text-align:right; }
+    .tx-amount .original { display:block; font-size:11px; color:var(--text3); font-weight:400; }
+    .tx-amount.income { color:var(--income); }
+    .tx-amount.expense { color:var(--expense); }
+    .tx-date-group { font-size:13px; color:var(--text2); margin:16px 0 8px; font-weight:500; }
+
+    .fab { position:fixed; bottom:calc(var(--nav-h) + 16px); right:16px; width:56px; height:56px; border-radius:50%; background:var(--accent); color:#fff; font-size:28px; border:none; cursor:pointer; z-index:99; box-shadow:0 4px 20px rgba(124,108,240,.5); display:flex; align-items:center; justify-content:center; transition:transform .15s; }
+    .fab:active { transform:scale(.93); }
+
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; align-items:flex-end; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal { background:var(--surface); border-radius:20px 20px 0 0; padding:20px 20px 40px; width:100%; max-width:430px; max-height:90vh; overflow-y:auto; }
+    .modal-handle { width:36px; height:4px; background:var(--surface3); border-radius:2px; margin:0 auto 20px; }
+    .modal-title { font-size:18px; font-weight:700; margin-bottom:20px; }
+
+    .form-group { margin-bottom:16px; }
+    .form-label { font-size:13px; color:var(--text2); margin-bottom:6px; display:block; }
+    .form-input { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; color:var(--text); font-size:16px; outline:none; -webkit-appearance:none; }
+    .form-input:focus { border-color:var(--accent); }
+    select.form-input { appearance:none; }
+
+    .type-toggle { display:flex; gap:8px; }
+    .type-btn { flex:1; padding:10px; border-radius:var(--radius-sm); border:2px solid var(--border); background:transparent; color:var(--text2); font-size:15px; cursor:pointer; transition:all .15s; }
+    .type-btn.active.expense { border-color:var(--expense); color:var(--expense); background:rgba(255,69,58,.1); }
+    .type-btn.active.income { border-color:var(--income); color:var(--income); background:rgba(52,199,89,.1); }
+
+    .cat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+    .cat-btn { display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px; border-radius:var(--radius-sm); background:var(--surface2); border:2px solid transparent; cursor:pointer; transition:all .15s; }
+    .cat-btn span { font-size:24px; }
+    .cat-btn label { font-size:11px; color:var(--text2); cursor:pointer; text-align:center; }
+    .cat-btn.active { border-color:var(--accent); background:rgba(124,108,240,.15); }
+
+    .amount-row { display:flex; gap:8px; align-items:flex-end; }
+    .amount-input-wrap { position:relative; flex:1; }
+    .amount-prefix { position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--text2); font-size:18px; pointer-events:none; }
+    .amount-input-big { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 14px 14px 40px; color:var(--text); font-size:28px; font-weight:700; outline:none; -webkit-appearance:none; }
+    .amount-input-big:focus { border-color:var(--accent); }
+    .currency-select-sm { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 10px; color:var(--text); font-size:15px; outline:none; -webkit-appearance:none; appearance:none; min-width:72px; }
+    .currency-select-sm:focus { border-color:var(--accent); }
+
+    .installment-row { display:flex; gap:8px; }
+    .installment-row .form-input { flex:1; }
+
+    .btn-primary { width:100%; padding:16px; border-radius:var(--radius-sm); background:var(--accent); color:#fff; font-size:16px; font-weight:600; border:none; cursor:pointer; margin-top:8px; }
+    .btn-secondary { width:100%; padding:14px; border-radius:var(--radius-sm); background:var(--surface2); color:var(--text2); font-size:15px; border:none; cursor:pointer; margin-top:8px; }
+    .btn-danger { background:rgba(255,69,58,.15); color:var(--expense); }
+    .btn-sm { padding:8px 14px; width:auto; font-size:13px; margin-top:0; border-radius:8px; }
+
+    .cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .cal-title { font-size:18px; font-weight:700; }
+    .cal-nav-btn { background:var(--surface2); border:none; color:var(--text); width:32px; height:32px; border-radius:50%; cursor:pointer; font-size:16px; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+    .cal-dow { text-align:center; font-size:11px; color:var(--text3); padding:6px 0; }
+    .cal-day { aspect-ratio:1; border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; font-size:14px; position:relative; gap:2px; }
+    .cal-day:hover { background:var(--surface2); }
+    .cal-day.today { background:var(--accent); font-weight:700; }
+    .cal-day.other-month { color:var(--text3); }
+    .cal-day.selected:not(.today) { background:var(--surface3); }
+    .cal-dot { width:4px; height:4px; border-radius:50%; background:var(--accent); }
+    .cal-dot.expense { background:var(--expense); }
+    .cal-day-detail { margin-top:16px; }
+
+    .sub-item { display:flex; align-items:center; gap:12px; padding:14px; background:var(--surface); border-radius:var(--radius-sm); margin-bottom:10px; cursor:pointer; }
+    .sub-icon { font-size:28px; width:44px; text-align:center; }
+    .sub-info { flex:1; }
+    .sub-name { font-size:15px; font-weight:600; }
+    .sub-meta { font-size:12px; color:var(--text2); margin-top:2px; }
+    .sub-amount { font-size:16px; font-weight:700; color:var(--expense); }
+    .sub-expired { opacity:.4; }
+    .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--surface2); color:var(--text2); margin-left:6px; }
+    .badge.active { background:rgba(52,199,89,.2); color:var(--income); }
+    .badge.expired { background:rgba(255,69,58,.2); color:var(--expense); }
+
+    .settings-section { margin-bottom:24px; }
+    .settings-title { font-size:13px; color:var(--text2); margin-bottom:10px; text-transform:uppercase; letter-spacing:.5px; }
+    .settings-row { display:flex; align-items:center; justify-content:space-between; padding:14px; background:var(--surface); border-radius:4px; margin-bottom:2px; cursor:pointer; }
+    .settings-row:first-of-type { border-radius:var(--radius-sm) var(--radius-sm) 4px 4px; }
+    .settings-row:last-of-type { border-radius:4px 4px var(--radius-sm) var(--radius-sm); margin-bottom:0; }
+    .settings-row:only-child { border-radius:var(--radius-sm); }
+    .settings-row-label { font-size:15px; }
+    .settings-row-value { font-size:15px; color:var(--text2); }
+
+    .rate-row { display:flex; align-items:center; gap:10px; padding:10px; background:var(--surface2); border-radius:8px; margin-bottom:6px; }
+    .rate-code { font-size:15px; font-weight:600; min-width:40px; }
+    .rate-input { flex:1; background:var(--surface3); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); font-size:15px; outline:none; }
+    .rate-input:focus { border-color:var(--accent); }
+
+    .reminder-item { display:flex; align-items:center; gap:12px; padding:12px; background:var(--surface); border-radius:var(--radius-sm); margin-bottom:8px; }
+    .reminder-icon { font-size:24px; }
+    .reminder-info { flex:1; }
+    .reminder-title { font-size:15px; font-weight:500; }
+    .reminder-when { font-size:12px; color:var(--text2); margin-top:2px; }
+    .reminder-del { background:none; border:none; color:var(--text3); font-size:18px; cursor:pointer; }
+
+    .cat-manage-row { display:flex; align-items:center; gap:10px; padding:10px; background:var(--surface2); border-radius:8px; margin-bottom:6px; }
+    .cat-manage-icon-btn { background:none; border:none; font-size:22px; cursor:pointer; }
+    .cat-manage-name { flex:1; background:var(--surface3); border:1px solid var(--border); border-radius:6px; padding:7px 10px; color:var(--text); font-size:14px; outline:none; }
+    .cat-manage-name:focus { border-color:var(--accent); }
+    .cat-manage-icon-input { width:48px; background:var(--surface3); border:1px solid var(--border); border-radius:6px; padding:7px 6px; color:var(--text); font-size:18px; outline:none; text-align:center; }
+    .cat-del-btn { background:none; border:none; color:var(--text3); font-size:18px; cursor:pointer; padding:4px; }
+
+    .empty { text-align:center; padding:48px 16px; color:var(--text3); }
+    .empty-icon { font-size:48px; margin-bottom:12px; }
+    .empty-text { font-size:15px; }
+    .filter-row { display:flex; gap:8px; margin-bottom:16px; overflow-x:auto; padding-bottom:4px; }
+    .filter-row::-webkit-scrollbar { display:none; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <main>
+    <!-- Home -->
+    <div class="view active" id="view-home">
+      <div class="page-header">
+        <div class="page-title" id="home-month-label"></div>
+        <button class="header-btn" onclick="showCurrencyPicker()">💱</button>
+      </div>
+      <div class="balance-card">
+        <div class="balance-label">本月餘額</div>
+        <div class="balance-amount" id="home-balance">0</div>
+        <div class="balance-sub">
+          <div class="balance-sub-item"><div class="lbl">收入</div><div class="val" id="home-income">0</div></div>
+          <div class="balance-sub-item"><div class="lbl">支出</div><div class="val" id="home-expense">0</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="chart-controls">
+          <button class="chip active" onclick="setChartPeriod('month',this)">本月</button>
+          <button class="chip" onclick="setChartPeriod('week',this)">本週</button>
+          <button class="chip" onclick="setChartType('bar',this)" id="chart-type-bar" style="margin-left:auto">長條</button>
+          <button class="chip" onclick="setChartType('pie',this)" id="chart-type-pie">圓餅</button>
+        </div>
+        <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px;">最近紀錄</div>
+        <div id="home-recent"></div>
+      </div>
+    </div>
+
+    <!-- Transactions -->
+    <div class="view" id="view-transactions">
+      <div class="page-header"><div class="page-title">紀錄</div></div>
+      <div class="filter-row" id="tx-filter-row"></div>
+      <div id="tx-list"></div>
+    </div>
+
+    <!-- Calendar -->
+    <div class="view" id="view-calendar">
+      <div class="cal-header">
+        <button class="cal-nav-btn" onclick="calPrev()">‹</button>
+        <div class="cal-title" id="cal-title"></div>
+        <button class="cal-nav-btn" onclick="calNext()">›</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-day-detail" id="cal-detail"></div>
+    </div>
+
+    <!-- Subscriptions -->
+    <div class="view" id="view-subscriptions">
+      <div class="page-header">
+        <div class="page-title">訂閱</div>
+        <button class="header-btn" onclick="openSubModal()">＋</button>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div style="color:var(--text2);font-size:12px;margin-bottom:4px;">每月固定支出（換算後）</div>
+        <div style="font-size:28px;font-weight:700;color:var(--expense)" id="sub-total">0</div>
+      </div>
+      <div id="sub-list"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="view" id="view-settings">
+      <div class="page-header"><div class="page-title">設定</div></div>
+      <div class="settings-section">
+        <div class="settings-title">貨幣</div>
+        <div class="settings-row" onclick="showCurrencyPicker()">
+          <span class="settings-row-label">主要貨幣</span>
+          <span class="settings-row-value" id="settings-currency">TWD</span>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">匯率設定（兌換主要貨幣）</div>
+        <div id="rates-list"></div>
+        <button class="btn-secondary btn-sm" style="margin-top:8px;" onclick="fetchRates()">🔄 抓取最新匯率</button>
+        <div id="rates-status" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">類別</div>
+        <div id="cat-manager-list"></div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">新增類別</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="form-input" style="flex:1" type="text" id="new-cat-name" placeholder="類別名稱">
+            <input class="form-input" style="width:52px;text-align:center" type="text" id="new-cat-icon" placeholder="🎯" maxlength="2">
+            <button class="btn-primary btn-sm" onclick="addCategory()">新增</button>
+          </div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">提醒</div>
+        <div class="settings-row" onclick="openReminderModal()">
+          <span class="settings-row-label">新增提醒</span><span>›</span>
+        </div>
+        <div id="reminder-list" style="margin-top:8px;"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">資料</div>
+        <div class="settings-row" onclick="exportData()"><span class="settings-row-label">匯出資料 (JSON)</span><span>›</span></div>
+        <div class="settings-row" onclick="clearData()"><span class="settings-row-label" style="color:var(--expense)">清除所有資料</span></div>
+      </div>
+    </div>
+  </main>
+
+  <nav>
+    <button class="nav-item active" onclick="switchView('home',this)">
+      <svg viewBox="0 0 24 24"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>
+      <label>首頁</label>
+    </button>
+    <button class="nav-item" onclick="switchView('transactions',this)">
+      <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/></svg>
+      <label>紀錄</label>
+    </button>
+    <button class="nav-item" onclick="switchView('calendar',this)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><rect x="7" y="13" width="3" height="3" rx=".5"/><rect x="11" y="13" width="3" height="3" rx=".5"/></svg>
+      <label>月曆</label>
+    </button>
+    <button class="nav-item" onclick="switchView('subscriptions',this)">
+      <svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      <label>訂閱</label>
+    </button>
+    <button class="nav-item" onclick="switchView('settings',this)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <label>設定</label>
+    </button>
+  </nav>
+  <button class="fab" onclick="openAddModal()" id="fab">＋</button>
+</div>
+
+<!-- Modal: Add Transaction -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="add-modal-title">新增記錄</div>
+    <div class="form-group">
+      <div class="type-toggle">
+        <button class="type-btn active expense" onclick="setType('expense',this)">支出</button>
+        <button class="type-btn income" onclick="setType('income',this)">收入</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">金額</label>
+      <div class="amount-row">
+        <div class="amount-input-wrap">
+          <span class="amount-prefix" id="amount-prefix">$</span>
+          <input class="amount-input-big" type="number" id="input-amount" placeholder="0" inputmode="decimal">
+        </div>
+        <select class="currency-select-sm" id="input-currency" onchange="updateAmountPrefix()"></select>
+      </div>
+      <div id="converted-hint" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">類別</label>
+      <div class="cat-grid" id="add-cat-grid"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">備註</label>
+      <input class="form-input" type="text" id="input-note" placeholder="選填">
+    </div>
+    <div class="form-group">
+      <label class="form-label">日期</label>
+      <input class="form-input" type="date" id="input-date">
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="input-installment" onchange="toggleInstallment()"> 刷卡分期
+      </label>
+      <div id="installment-fields" style="display:none;margin-top:8px;">
+        <div class="installment-row">
+          <div><label class="form-label">期數</label><input class="form-input" type="number" id="input-periods" placeholder="12" min="2"></div>
+          <div><label class="form-label">目前第幾期</label><input class="form-input" type="number" id="input-current-period" placeholder="1" min="1"></div>
+        </div>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="saveTransaction()">儲存</button>
+    <button class="btn-secondary" onclick="closeModal('modal-add')">取消</button>
+    <button class="btn-secondary btn-danger" id="delete-tx-btn" style="display:none" onclick="deleteTransaction()">刪除</button>
+  </div>
+</div>
+
+<!-- Modal: Add Subscription -->
+<div class="modal-overlay" id="modal-sub">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">訂閱服務</div>
+    <div class="form-group">
+      <label class="form-label">服務名稱</label>
+      <input class="form-input" type="text" id="sub-name" placeholder="Netflix、Spotify…">
+    </div>
+    <div class="form-group">
+      <label class="form-label">金額</label>
+      <div class="amount-row">
+        <div class="amount-input-wrap">
+          <span class="amount-prefix" id="sub-amount-prefix">$</span>
+          <input class="amount-input-big" type="number" id="sub-amount" placeholder="0" inputmode="decimal">
+        </div>
+        <select class="currency-select-sm" id="sub-currency" onchange="updateSubAmountPrefix()"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">類別</label>
+      <div class="cat-grid" id="sub-cat-grid"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">每月扣款日</label>
+      <input class="form-input" type="number" id="sub-day" placeholder="1~28" min="1" max="28">
+    </div>
+    <div class="form-group">
+      <label class="form-label">開始日期</label>
+      <input class="form-input" type="date" id="sub-start">
+    </div>
+    <div class="form-group">
+      <label class="form-label">到期日（選填）</label>
+      <input class="form-input" type="date" id="sub-end">
+    </div>
+    <button class="btn-primary" onclick="saveSubscription()">儲存</button>
+    <button class="btn-secondary" onclick="closeModal('modal-sub')">取消</button>
+    <button class="btn-secondary btn-danger" id="delete-sub-btn" style="display:none" onclick="deleteSubscription()">刪除</button>
+  </div>
+</div>
+
+<!-- Modal: Reminder -->
+<div class="modal-overlay" id="modal-reminder">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">新增提醒</div>
+    <div class="form-group">
+      <label class="form-label">提醒內容</label>
+      <input class="form-input" type="text" id="reminder-title-input" placeholder="繳信用卡、保費…">
+    </div>
+    <div class="form-group">
+      <label class="form-label">重複</label>
+      <select class="form-input" id="reminder-repeat">
+        <option value="once">一次性</option>
+        <option value="monthly">每月</option>
+        <option value="yearly">每年</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">日期</label>
+      <input class="form-input" type="date" id="reminder-date">
+    </div>
+    <button class="btn-primary" onclick="saveReminder()">儲存</button>
+    <button class="btn-secondary" onclick="closeModal('modal-reminder')">取消</button>
+  </div>
+</div>
+
+<!-- Modal: Currency -->
+<div class="modal-overlay" id="modal-currency">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">選擇主要貨幣</div>
+    <div id="currency-list"></div>
+    <button class="btn-secondary" onclick="closeModal('modal-currency')">取消</button>
+  </div>
+</div>
+
+<script>
+const CURRENCIES = [
+  { code:'TWD', symbol:'NT$', name:'新台幣' },
+  { code:'USD', symbol:'$',   name:'美元' },
+  { code:'JPY', symbol:'¥',   name:'日圓' },
+  { code:'CNY', symbol:'¥',   name:'人民幣' },
+  { code:'EUR', symbol:'€',   name:'歐元' },
+  { code:'KRW', symbol:'₩',   name:'韓圓' },
+  { code:'HKD', symbol:'HK$', name:'港幣' },
+];
+
+// Default exchange rates to TWD
+const DEFAULT_RATES = { TWD:1, USD:32.5, JPY:0.22, CNY:4.5, EUR:35.5, KRW:0.024, HKD:4.2 };
+
+const DEFAULT_CATEGORIES = [
+  { id:'food',          name:'餐飲',  icon:'🍽️' },
+  { id:'transport',     name:'交通',  icon:'🚗' },
+  { id:'shopping',      name:'購物',  icon:'🛍️' },
+  { id:'entertainment', name:'娛樂',  icon:'🎮' },
+  { id:'health',        name:'健康',  icon:'💊' },
+  { id:'work',          name:'工作',  icon:'💼' },
+  { id:'sub',           name:'訂閱',  icon:'📱' },
+  { id:'salary',        name:'薪資',  icon:'💰' },
+  { id:'other',         name:'其他',  icon:'📦' },
+];
+
+let db = {
+  transactions: [], subscriptions: [], reminders: [],
+  categories: [...DEFAULT_CATEGORIES],
+  settings: { currency: 'TWD', rates: { ...DEFAULT_RATES } },
+};
+let currentView = 'home';
+let calDate = new Date();
+let calSelectedDay = null;
+let chartPeriod = 'month';
+let chartType = 'bar';
+let mainChart = null;
+let editingTxId = null;
+let editingSubId = null;
+let selectedCat = null;
+let selectedSubCat = null;
+
+function save() { localStorage.setItem('ledger_db', JSON.stringify(db)); }
+function load() {
+  const raw = localStorage.getItem('ledger_db');
+  if (raw) {
+    const p = JSON.parse(raw);
+    db = { ...db, ...p };
+    if (!db.settings.rates) db.settings.rates = { ...DEFAULT_RATES };
+    if (!db.categories || db.categories.length === 0) db.categories = [...DEFAULT_CATEGORIES];
+  }
+}
+
+// ── Currency helpers ──
+function getBase() { return db.settings.currency; }
+function getCurrencyInfo(code) { return CURRENCIES.find(c => c.code === code) || CURRENCIES[0]; }
+function getSymbol(code) { return getCurrencyInfo(code || getBase()).symbol; }
+// Convert amount in `fromCode` to base currency
+function toBase(amount, fromCode) {
+  if (!fromCode || fromCode === getBase()) return amount;
+  const fromRate = db.settings.rates[fromCode] || 1;
+  const toRate = db.settings.rates[getBase()] || 1;
+  return amount * fromRate / toRate;
+}
+function fmt(n) { return getSymbol() + Number(n).toLocaleString('zh-TW', { maximumFractionDigits: 0 }); }
+function fmtOrig(amount, code) { return getSymbol(code) + Number(amount).toLocaleString('zh-TW', { maximumFractionDigits: 0 }); }
+
+// ── Currency select population ──
+function populateCurrencySelects() {
+  ['input-currency','sub-currency'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = CURRENCIES.map(c => `<option value="${c.code}" ${c.code===getBase()?'selected':''}>${c.code}</option>`).join('');
+  });
+}
+
+function updateAmountPrefix() {
+  const code = document.getElementById('input-currency').value;
+  document.getElementById('amount-prefix').textContent = getSymbol(code);
+  updateConvertedHint();
+}
+function updateSubAmountPrefix() {
+  const code = document.getElementById('sub-currency').value;
+  document.getElementById('sub-amount-prefix').textContent = getSymbol(code);
+}
+function updateConvertedHint() {
+  const code = document.getElementById('input-currency')?.value;
+  const amt = parseFloat(document.getElementById('input-amount')?.value);
+  const hint = document.getElementById('converted-hint');
+  if (!hint) return;
+  if (code && code !== getBase() && amt > 0) {
+    hint.textContent = `≈ ${fmt(toBase(amt, code))}（換算後）`;
+  } else { hint.textContent = ''; }
+}
+
+// ── View ──
+function switchView(name, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (el) el.classList.add('active');
+  currentView = name;
+  document.getElementById('fab').style.display = (name==='subscriptions'||name==='settings') ? 'none' : 'flex';
+  renderView(name);
+}
+function renderView(name) {
+  if (name==='home') renderHome();
+  if (name==='transactions') renderTransactions();
+  if (name==='calendar') renderCalendar();
+  if (name==='subscriptions') renderSubscriptions();
+  if (name==='settings') renderSettings();
+}
+
+// ── Subscriptions auto-process ──
+function processSubscriptions() {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  db.subscriptions.forEach(sub => {
+    if (sub.endDate && sub.endDate < todayStr) return;
+    const start = new Date(sub.startDate);
+    let cursor = new Date(start.getFullYear(), start.getMonth(), sub.billingDay);
+    while (cursor <= today) {
+      const dateStr = cursor.toISOString().split('T')[0];
+      const exists = db.transactions.some(t => t.subId === sub.id && t.date === dateStr);
+      if (!exists && dateStr >= sub.startDate) {
+        const origAmt = Number(sub.amount);
+        const subCurrency = sub.currency || getBase();
+        db.transactions.push({
+          id: 'sub_' + sub.id + '_' + dateStr, date: dateStr,
+          amount: toBase(origAmt, subCurrency), originalAmount: origAmt, currency: subCurrency,
+          type: 'expense', categoryId: sub.categoryId, note: sub.name,
+          subId: sub.id, createdAt: Date.now()
+        });
+      }
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, sub.billingDay);
+    }
+  });
+  save();
+}
+
+// ── Home ──
+function renderHome() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  document.getElementById('home-month-label').textContent = `${y}年${m+1}月`;
+  const txs = db.transactions.filter(t => { const d=new Date(t.date); return d.getFullYear()===y && d.getMonth()===m; });
+  const income = txs.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+  const expense = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+  document.getElementById('home-balance').textContent = fmt(income-expense);
+  document.getElementById('home-income').textContent = fmt(income);
+  document.getElementById('home-expense').textContent = fmt(expense);
+  renderChart();
+  const recent = [...db.transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+  const el = document.getElementById('home-recent');
+  el.innerHTML = recent.length ? recent.map(t=>txHTML(t)).join('') : '<div style="text-align:center;color:var(--text3);padding:16px;font-size:14px;">還沒有紀錄</div>';
+}
+
+// ── Chart ──
+function setChartPeriod(p,el) {
+  chartPeriod=p;
+  document.querySelectorAll('.chart-controls .chip').forEach(c=>{ if(c.textContent==='本月'||c.textContent==='本週') c.classList.remove('active'); });
+  el.classList.add('active'); renderChart();
+}
+function setChartType(t,el) {
+  chartType=t;
+  document.getElementById('chart-type-bar').classList.toggle('active',t==='bar');
+  document.getElementById('chart-type-pie').classList.toggle('active',t==='pie');
+  renderChart();
+}
+function renderChart() {
+  const now = new Date();
+  let txs;
+  if (chartPeriod==='month') {
+    txs = db.transactions.filter(t=>{ const d=new Date(t.date); return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth(); });
+  } else {
+    const weekAgo=new Date(now); weekAgo.setDate(now.getDate()-7);
+    txs = db.transactions.filter(t=>new Date(t.date)>=weekAgo);
+  }
+  const expenses = txs.filter(t=>t.type==='expense');
+  const catMap = {};
+  expenses.forEach(t=>{ catMap[t.categoryId]=(catMap[t.categoryId]||0)+Number(t.amount); });
+  const cats = db.categories.filter(c=>catMap[c.id]);
+  const labels = cats.map(c=>c.icon+' '+c.name);
+  const data = cats.map(c=>catMap[c.id]);
+  const colors = ['#7C6CF0','#FF6B6B','#4ECDC4','#45B7D1','#A29BFE','#FFEAA7','#DDA0DD','#98D8C8','#B0BEC5','#66BB6A'];
+  const canvas = document.getElementById('mainChart');
+  if (mainChart) { mainChart.destroy(); mainChart=null; }
+  if (!data.length) return;
+  mainChart = new Chart(canvas.getContext('2d'), {
+    type: chartType==='pie'?'doughnut':'bar',
+    data: { labels, datasets:[{ data, backgroundColor:colors, borderRadius:8, borderWidth:0 }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend:{ display:chartType==='pie', labels:{ color:'#fff', font:{size:12} } },
+        tooltip:{ callbacks:{ label:ctx=>fmt(ctx.parsed.y??ctx.parsed) } }
+      },
+      scales: chartType==='bar' ? {
+        x:{ ticks:{color:'#999'}, grid:{color:'#2a2a2a'} },
+        y:{ ticks:{color:'#999',callback:v=>fmt(v)}, grid:{color:'#2a2a2a'} }
+      } : {}
+    }
+  });
+}
+
+// ── Transactions ──
+function renderTransactions() {
+  const now = new Date();
+  let filterYear = now.getFullYear(), filterMonth = now.getMonth();
+  const months = [];
+  for (let i=5;i>=0;i--) { const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push({y:d.getFullYear(),m:d.getMonth(),label:`${d.getFullYear()}/${d.getMonth()+1}`}); }
+  document.getElementById('tx-filter-row').innerHTML = months.map((mo,i)=>
+    `<button class="chip ${i===5?'active':''}" onclick="filterTx(${mo.y},${mo.m},this)">${mo.label}</button>`
+  ).join('');
+  renderTxList(filterYear, filterMonth);
+}
+function filterTx(y,m,el) {
+  document.querySelectorAll('#tx-filter-row .chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active'); renderTxList(y,m);
+}
+function renderTxList(y,m) {
+  const txs = db.transactions.filter(t=>{ const d=new Date(t.date); return d.getFullYear()===y&&d.getMonth()===m; }).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if (!txs.length) { document.getElementById('tx-list').innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">這個月沒有紀錄</div></div>'; return; }
+  const groups = {};
+  txs.forEach(t=>{ (groups[t.date]=groups[t.date]||[]).push(t); });
+  let html='';
+  Object.keys(groups).sort((a,b)=>b.localeCompare(a)).forEach(date=>{
+    const d=new Date(date); const days=['日','一','二','三','四','五','六'];
+    html+=`<div class="tx-date-group">${date} 週${days[d.getDay()]}</div><div class="card card-sm">${groups[date].map(t=>txHTML(t,true)).join('')}</div>`;
+  });
+  document.getElementById('tx-list').innerHTML = html;
+}
+
+function txHTML(t, clickable=false) {
+  const cat = db.categories.find(c=>c.id===t.categoryId)||{icon:'📦',name:'其他'};
+  const sign = t.type==='income'?'+':'-';
+  const onclick = clickable?`onclick="editTransaction('${t.id}')"` :'';
+  const instBadge = t.installment?`<span class="badge">${t.installment.current}/${t.installment.total}期</span>`:'';
+  const hasFx = t.currency && t.currency !== getBase() && t.originalAmount;
+  const origLine = hasFx ? `<span class="original">${fmtOrig(t.originalAmount, t.currency)}</span>` : '';
+  return `<div class="tx-item" ${onclick} style="${clickable?'cursor:pointer':''}">
+    <div class="tx-icon">${cat.icon}</div>
+    <div class="tx-info">
+      <div class="tx-name">${cat.name}${instBadge}</div>
+      <div class="tx-meta">${t.note||''}</div>
+    </div>
+    <div class="tx-amount ${t.type}">${sign}${fmt(t.amount)}${origLine}</div>
+  </div>`;
+}
+
+// ── Calendar ──
+function renderCalendar() {
+  const y=calDate.getFullYear(), m=calDate.getMonth();
+  document.getElementById('cal-title').textContent=`${y}年${m+1}月`;
+  const first=new Date(y,m,1), last=new Date(y,m+1,0);
+  const days=['日','一','二','三','四','五','六'];
+  let html=days.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  for(let i=0;i<first.getDay();i++){ const d=new Date(y,m,-first.getDay()+i+1); html+=`<div class="cal-day other-month"><span>${d.getDate()}</span></div>`; }
+  const today=new Date();
+  for(let d=1;d<=last.getDate();d++){
+    const dateStr=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const txs=db.transactions.filter(t=>t.date===dateStr);
+    const isToday=today.getFullYear()===y&&today.getMonth()===m&&today.getDate()===d;
+    const isSel=calSelectedDay===dateStr;
+    const hasDot=txs.length>0, hasExpense=txs.some(t=>t.type==='expense');
+    html+=`<div class="cal-day ${isToday?'today':''} ${isSel&&!isToday?'selected':''}" onclick="selectCalDay('${dateStr}')">
+      <span>${d}</span>${hasDot?`<div class="cal-dot ${hasExpense?'expense':''}"></div>`:''}
+    </div>`;
+  }
+  const rem=(7-(first.getDay()+last.getDate())%7)%7;
+  for(let i=1;i<=rem;i++) html+=`<div class="cal-day other-month"><span>${i}</span></div>`;
+  document.getElementById('cal-grid').innerHTML=html;
+  if(calSelectedDay) renderCalDetail(calSelectedDay);
+}
+function selectCalDay(d){ calSelectedDay=d; renderCalendar(); renderCalDetail(d); }
+function renderCalDetail(dateStr){
+  const txs=db.transactions.filter(t=>t.date===dateStr);
+  const el=document.getElementById('cal-detail');
+  el.innerHTML=txs.length?`<div class="card card-sm">${txs.map(t=>txHTML(t,true)).join('')}</div>`:`<div style="text-align:center;color:var(--text3);padding:16px;font-size:14px;">${dateStr} 沒有記錄</div>`;
+}
+function calPrev(){ calDate=new Date(calDate.getFullYear(),calDate.getMonth()-1,1); renderCalendar(); }
+function calNext(){ calDate=new Date(calDate.getFullYear(),calDate.getMonth()+1,1); renderCalendar(); }
+
+// ── Subscriptions ──
+function renderSubscriptions(){
+  const today=new Date().toISOString().split('T')[0];
+  const subs=db.subscriptions;
+  const activeSubs=subs.filter(s=>!s.endDate||s.endDate>=today);
+  const total=activeSubs.reduce((s,sub)=>s+toBase(Number(sub.amount),sub.currency||getBase()),0);
+  document.getElementById('sub-total').textContent=fmt(total)+' / 月';
+  document.getElementById('sub-list').innerHTML=subs.length?subs.map(sub=>{
+    const cat=db.categories.find(c=>c.id===sub.categoryId)||{icon:'📱'};
+    const expired=sub.endDate&&sub.endDate<today;
+    const badge=expired?'<span class="badge expired">已到期</span>':'<span class="badge active">進行中</span>';
+    const subCur=sub.currency||getBase();
+    const convertedNote = subCur!==getBase()?` ≈ ${fmt(toBase(Number(sub.amount),subCur))}`:'';
+    return `<div class="sub-item ${expired?'sub-expired':''}" onclick="editSubscription('${sub.id}')">
+      <div class="sub-icon">${cat.icon}</div>
+      <div class="sub-info">
+        <div class="sub-name">${sub.name} ${badge}</div>
+        <div class="sub-meta">每月 ${sub.billingDay} 日${sub.endDate?' · 到期 '+sub.endDate:''}</div>
+      </div>
+      <div class="sub-amount">${fmtOrig(sub.amount,subCur)}${convertedNote}</div>
+    </div>`;
+  }).join(''):'<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">還沒有訂閱記錄</div></div>';
+}
+
+// ── Settings ──
+function renderSettings(){
+  document.getElementById('settings-currency').textContent=getBase();
+  renderRatesList();
+  renderCatManager();
+  renderReminders();
+}
+
+function renderRatesList(){
+  const base=getBase();
+  const el=document.getElementById('rates-list');
+  el.innerHTML=CURRENCIES.filter(c=>c.code!==base).map(c=>{
+    const rate=db.settings.rates[c.code]||1;
+    const baseRate=db.settings.rates[base]||1;
+    const displayRate=(rate/baseRate).toFixed(4);
+    return `<div class="rate-row">
+      <span class="rate-code">${c.code}</span>
+      <span style="font-size:12px;color:var(--text3);flex:0 0 auto;">1 ${c.code} =</span>
+      <input class="rate-input" type="number" value="${displayRate}" step="0.0001"
+        onchange="updateRate('${c.code}',this.value)" inputmode="decimal">
+      <span style="font-size:12px;color:var(--text3);">${base}</span>
+    </div>`;
+  }).join('');
+}
+
+function updateRate(code, val){
+  const base=getBase();
+  const baseRate=db.settings.rates[base]||1;
+  db.settings.rates[code]=parseFloat(val)*baseRate;
+  save();
+}
+
+async function fetchRates(){
+  const base=getBase();
+  const el=document.getElementById('rates-status');
+  el.textContent='抓取中…';
+  try {
+    const codes=CURRENCIES.filter(c=>c.code!==base).map(c=>c.code).join(',');
+    const res=await fetch(`https://api.frankfurter.app/latest?from=${base}&to=${codes}`);
+    const data=await res.json();
+    if(data.rates){
+      const baseRate=db.settings.rates[base]||1;
+      Object.entries(data.rates).forEach(([code,rate])=>{ db.settings.rates[code]=baseRate/rate; });
+      save(); renderRatesList();
+      el.textContent=`✓ 更新成功（${new Date().toLocaleTimeString()}）`;
+    }
+  } catch(e){ el.textContent='無法連線，請手動輸入匯率'; }
+}
+
+// ── Categories ──
+function renderCatManager(){
+  const el=document.getElementById('cat-manager-list');
+  if(!el) return;
+  el.innerHTML=db.categories.map(cat=>`
+    <div class="cat-manage-row" id="cat-row-${cat.id}">
+      <input class="cat-manage-icon-input" type="text" value="${cat.icon}" maxlength="2"
+        onchange="updateCatIcon('${cat.id}',this.value)">
+      <input class="cat-manage-name" type="text" value="${cat.name}"
+        onchange="updateCatName('${cat.id}',this.value)">
+      <button class="cat-del-btn" onclick="deleteCategory('${cat.id}')">✕</button>
+    </div>`
+  ).join('');
+}
+
+function updateCatName(id,val){ const c=db.categories.find(c=>c.id===id); if(c){ c.name=val; save(); } }
+function updateCatIcon(id,val){ const c=db.categories.find(c=>c.id===id); if(c){ c.icon=val||'📦'; save(); } }
+function deleteCategory(id){
+  if(!confirm('確定刪除這個類別？')) return;
+  db.categories=db.categories.filter(c=>c.id!==id); save(); renderCatManager();
+}
+function addCategory(){
+  const name=document.getElementById('new-cat-name').value.trim();
+  const icon=document.getElementById('new-cat-icon').value.trim()||'📦';
+  if(!name){ alert('請填寫類別名稱'); return; }
+  db.categories.push({ id:'cat_'+Date.now(), name, icon });
+  save(); renderCatManager();
+  document.getElementById('new-cat-name').value='';
+  document.getElementById('new-cat-icon').value='';
+}
+
+function renderCatGrid(gridId, selectedId, onSelect){
+  const grid=document.getElementById(gridId);
+  if(!grid) return;
+  grid.innerHTML=db.categories.map(cat=>`
+    <div class="cat-btn ${cat.id===selectedId?'active':''}" onclick="${onSelect}('${cat.id}')">
+      <span>${cat.icon}</span><label>${cat.name}</label>
+    </div>`
+  ).join('');
+}
+function selectCat(id){ selectedCat=id; renderCatGrid('add-cat-grid',selectedCat,'selectCat'); }
+function selectSubCat(id){ selectedSubCat=id; renderCatGrid('sub-cat-grid',selectedSubCat,'selectSubCat'); }
+
+// ── Add Transaction ──
+function openAddModal(date){
+  editingTxId=null; selectedCat=db.categories[0]?.id;
+  document.getElementById('add-modal-title').textContent='新增記錄';
+  document.getElementById('input-amount').value='';
+  document.getElementById('input-note').value='';
+  document.getElementById('input-date').value=date||new Date().toISOString().split('T')[0];
+  document.getElementById('input-installment').checked=false;
+  document.getElementById('installment-fields').style.display='none';
+  document.getElementById('delete-tx-btn').style.display='none';
+  document.getElementById('converted-hint').textContent='';
+  populateCurrencySelects();
+  document.getElementById('input-currency').value=getBase();
+  document.getElementById('amount-prefix').textContent=getSymbol();
+  setType('expense',document.querySelector('.type-btn.expense'));
+  renderCatGrid('add-cat-grid',selectedCat,'selectCat');
+  document.getElementById('modal-add').classList.add('open');
+  document.getElementById('input-amount').addEventListener('input', updateConvertedHint);
+}
+
+function editTransaction(id){
+  const t=db.transactions.find(t=>t.id===id); if(!t) return;
+  editingTxId=id; selectedCat=t.categoryId;
+  document.getElementById('add-modal-title').textContent='編輯記錄';
+  const origAmt = t.originalAmount || t.amount;
+  const origCur = t.currency || getBase();
+  document.getElementById('input-amount').value=origAmt;
+  document.getElementById('input-note').value=t.note||'';
+  document.getElementById('input-date').value=t.date;
+  document.getElementById('delete-tx-btn').style.display='block';
+  populateCurrencySelects();
+  document.getElementById('input-currency').value=origCur;
+  document.getElementById('amount-prefix').textContent=getSymbol(origCur);
+  updateConvertedHint();
+  const typeEl=t.type==='expense'?document.querySelector('.type-btn.expense'):document.querySelector('.type-btn.income');
+  setType(t.type,typeEl);
+  if(t.installment){
+    document.getElementById('input-installment').checked=true;
+    document.getElementById('installment-fields').style.display='block';
+    document.getElementById('input-periods').value=t.installment.total;
+    document.getElementById('input-current-period').value=t.installment.current;
+  } else {
+    document.getElementById('input-installment').checked=false;
+    document.getElementById('installment-fields').style.display='none';
+  }
+  renderCatGrid('add-cat-grid',selectedCat,'selectCat');
+  document.getElementById('modal-add').classList.add('open');
+}
+
+function setType(type,el){
+  document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+function getSelectedType(){ return document.querySelector('.type-btn.active')?.classList.contains('income')?'income':'expense'; }
+function toggleInstallment(){ document.getElementById('installment-fields').style.display=document.getElementById('input-installment').checked?'block':'none'; }
+
+function saveTransaction(){
+  const origAmt=parseFloat(document.getElementById('input-amount').value);
+  if(!origAmt||origAmt<=0){ alert('請輸入金額'); return; }
+  const origCur=document.getElementById('input-currency').value;
+  const amount=toBase(origAmt,origCur);
+  const date=document.getElementById('input-date').value;
+  const note=document.getElementById('input-note').value;
+  const type=getSelectedType();
+  const isInstallment=document.getElementById('input-installment').checked;
+  let installment=null;
+  if(isInstallment){
+    const total=parseInt(document.getElementById('input-periods').value)||1;
+    const current=parseInt(document.getElementById('input-current-period').value)||1;
+    installment={total,current};
+  }
+  const hasFx = origCur !== getBase();
+  if(editingTxId){
+    const idx=db.transactions.findIndex(t=>t.id===editingTxId);
+    if(idx!==-1) db.transactions[idx]={ ...db.transactions[idx], amount, originalAmount:hasFx?origAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat, installment };
+  } else {
+    db.transactions.push({ id:'tx_'+Date.now(), amount, originalAmount:hasFx?origAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat||db.categories[0]?.id, installment, createdAt:Date.now() });
+  }
+  save(); closeModal('modal-add'); renderView(currentView);
+}
+
+function deleteTransaction(){
+  if(!editingTxId) return;
+  db.transactions=db.transactions.filter(t=>t.id!==editingTxId);
+  save(); closeModal('modal-add'); renderView(currentView);
+}
+
+// ── Subscriptions ──
+function openSubModal(){
+  editingSubId=null; selectedSubCat=db.categories[0]?.id;
+  ['sub-name','sub-amount','sub-day','sub-end'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('sub-start').value=new Date().toISOString().split('T')[0];
+  document.getElementById('delete-sub-btn').style.display='none';
+  populateCurrencySelects();
+  document.getElementById('sub-currency').value=getBase();
+  document.getElementById('sub-amount-prefix').textContent=getSymbol();
+  renderCatGrid('sub-cat-grid',selectedSubCat,'selectSubCat');
+  document.getElementById('modal-sub').classList.add('open');
+}
+function editSubscription(id){
+  const sub=db.subscriptions.find(s=>s.id===id); if(!sub) return;
+  editingSubId=id; selectedSubCat=sub.categoryId;
+  document.getElementById('sub-name').value=sub.name;
+  document.getElementById('sub-amount').value=sub.amount;
+  document.getElementById('sub-day').value=sub.billingDay;
+  document.getElementById('sub-start').value=sub.startDate;
+  document.getElementById('sub-end').value=sub.endDate||'';
+  document.getElementById('delete-sub-btn').style.display='block';
+  populateCurrencySelects();
+  const subCur=sub.currency||getBase();
+  document.getElementById('sub-currency').value=subCur;
+  document.getElementById('sub-amount-prefix').textContent=getSymbol(subCur);
+  renderCatGrid('sub-cat-grid',selectedSubCat,'selectSubCat');
+  document.getElementById('modal-sub').classList.add('open');
+}
+function saveSubscription(){
+  const name=document.getElementById('sub-name').value.trim();
+  const amount=parseFloat(document.getElementById('sub-amount').value);
+  const billingDay=parseInt(document.getElementById('sub-day').value)||1;
+  const startDate=document.getElementById('sub-start').value;
+  const endDate=document.getElementById('sub-end').value||null;
+  const currency=document.getElementById('sub-currency').value;
+  if(!name||!amount){ alert('請填寫名稱和金額'); return; }
+  if(editingSubId){
+    const idx=db.subscriptions.findIndex(s=>s.id===editingSubId);
+    if(idx!==-1) db.subscriptions[idx]={...db.subscriptions[idx],name,amount,billingDay,startDate,endDate,currency,categoryId:selectedSubCat};
+  } else {
+    db.subscriptions.push({ id:'sub_'+Date.now(), name, amount, billingDay, startDate, endDate, currency, categoryId:selectedSubCat||'sub', createdAt:Date.now() });
+  }
+  save(); processSubscriptions(); closeModal('modal-sub'); renderView(currentView);
+}
+function deleteSubscription(){
+  if(!editingSubId) return;
+  db.subscriptions=db.subscriptions.filter(s=>s.id!==editingSubId);
+  db.transactions=db.transactions.filter(t=>t.subId!==editingSubId);
+  save(); closeModal('modal-sub'); renderView(currentView);
+}
+
+// ── Reminders ──
+function openReminderModal(){
+  document.getElementById('reminder-title-input').value='';
+  document.getElementById('reminder-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('reminder-repeat').value='monthly';
+  document.getElementById('modal-reminder').classList.add('open');
+}
+function saveReminder(){
+  const title=document.getElementById('reminder-title-input').value.trim();
+  const date=document.getElementById('reminder-date').value;
+  const repeat=document.getElementById('reminder-repeat').value;
+  if(!title){ alert('請填寫提醒內容'); return; }
+  db.reminders.push({ id:'rem_'+Date.now(), title, date, repeat });
+  save(); scheduleReminders(); closeModal('modal-reminder'); renderSettings();
+}
+function deleteReminder(id){ db.reminders=db.reminders.filter(r=>r.id!==id); save(); renderSettings(); }
+function renderReminders(){
+  const el=document.getElementById('reminder-list');
+  const repeatLabel={once:'一次',monthly:'每月',yearly:'每年'};
+  el.innerHTML=db.reminders.map(r=>`
+    <div class="reminder-item">
+      <div class="reminder-icon">🔔</div>
+      <div class="reminder-info">
+        <div class="reminder-title">${r.title}</div>
+        <div class="reminder-when">${r.date} · ${repeatLabel[r.repeat]}</div>
+      </div>
+      <button class="reminder-del" onclick="deleteReminder('${r.id}')">✕</button>
+    </div>`
+  ).join('');
+}
+function scheduleReminders(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission==='default') Notification.requestPermission();
+  const today=new Date().toISOString().split('T')[0];
+  db.reminders.forEach(r=>{ if(r.date===today&&Notification.permission==='granted') new Notification('💰 記帳提醒',{body:r.title}); });
+}
+
+// ── Currency picker ──
+function showCurrencyPicker(){
+  document.getElementById('currency-list').innerHTML=CURRENCIES.map(c=>`
+    <div class="settings-row" onclick="setBaseCurrency('${c.code}')">
+      <span class="settings-row-label">${c.name} (${c.code})</span>
+      ${db.settings.currency===c.code?'<span>✓</span>':''}
+    </div>`
+  ).join('');
+  document.getElementById('modal-currency').classList.add('open');
+}
+function setBaseCurrency(code){
+  db.settings.currency=code; save();
+  closeModal('modal-currency'); renderView(currentView); renderSettings();
+}
+
+// ── Export / Clear ──
+function exportData(){
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='ledger_'+new Date().toISOString().split('T')[0]+'.json';
+  a.click();
+}
+function clearData(){
+  if(confirm('確定要清除所有資料？無法復原。')){
+    db={ transactions:[], subscriptions:[], reminders:[], categories:[...DEFAULT_CATEGORIES], settings:{ currency:'TWD', rates:{...DEFAULT_RATES} } };
+    save(); renderView(currentView);
+  }
+}
+
+// ── Modal ──
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(overlay=>{
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
+});
+
+// ── Init ──
+load();
+processSubscriptions();
+scheduleReminders();
+renderHome();
+</script>
+</body>
+</html>
