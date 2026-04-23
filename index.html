@@ -242,7 +242,7 @@
 
     <!-- Settings -->
     <div class="view" id="view-settings">
-      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.2</div></div>
+      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.3</div></div>
       <div class="settings-section">
         <div class="settings-title">貨幣</div>
         <div class="settings-row" onclick="showCurrencyPicker()">
@@ -277,9 +277,9 @@
         <div id="reminder-list" style="margin-top:8px;"></div>
       </div>
       <div class="settings-section">
-        <div class="settings-title">AI 記帳（Gemini）</div>
-        <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">串接 Gemini API 後可用自然語言快速記帳</div>
-        <input class="form-input" type="password" id="gemini-key-input" placeholder="貼上 Gemini API Key" style="margin-bottom:8px;">
+        <div class="settings-title">AI 記帳（Groq）</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">申請免費 API Key：console.groq.com → API Keys</div>
+        <input class="form-input" type="password" id="gemini-key-input" placeholder="貼上 Groq API Key" style="margin-bottom:8px;">
         <button class="btn-primary btn-sm" onclick="saveGeminiKey()">儲存</button>
         <div id="gemini-key-status" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
       </div>
@@ -826,7 +826,7 @@ function renderSettings(){
   renderReminders();
   // Gemini key status
   const gkStatus = document.getElementById('gemini-key-status');
-  if (gkStatus) gkStatus.innerHTML = db.settings.geminiKey
+  if (gkStatus && !gkStatus.textContent) gkStatus.innerHTML = db.settings.geminiKey
     ? '<span style="color:#4caf50;">✓ 已設定</span>'
     : '<span style="color:var(--text3);">尚未設定</span>';
   // Gist token status
@@ -1156,7 +1156,7 @@ function openAiModal() {
   if (!db.settings.geminiKey) {
     switchView('settings', document.querySelector('.nav-item:last-child'));
     setTimeout(() => {
-      document.getElementById('gemini-key-status').textContent = '← 請先填入 Gemini API Key';
+      document.getElementById('gemini-key-status').textContent = '← 請先填入 Groq API Key';
       document.getElementById('gemini-key-input').focus();
     }, 100);
     return;
@@ -1182,14 +1182,18 @@ async function runAiParse() {
 文字：${text}`;
 
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${db.settings.geminiKey}`, {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${db.settings.geminiKey}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1
+      })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    const raw = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
+    const raw = data.choices[0].message.content.replace(/```json|```/g, '').trim();
     const records = JSON.parse(raw);
     showAiPreview(records);
   } catch(e) {
