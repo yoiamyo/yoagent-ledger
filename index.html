@@ -1141,7 +1141,11 @@ function updateFabAi() {
 // ── AI Modal ──
 function openAiModal() {
   if (!db.settings.geminiKey) {
-    alert('請先在設定頁填入 Gemini API Key');
+    switchView('settings', document.querySelector('.nav-item:last-child'));
+    setTimeout(() => {
+      document.getElementById('gemini-key-status').textContent = '← 請先填入 Gemini API Key';
+      document.getElementById('gemini-key-input').focus();
+    }, 100);
     return;
   }
   document.getElementById('ai-input').value = '';
