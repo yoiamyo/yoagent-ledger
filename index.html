@@ -242,7 +242,7 @@
 
     <!-- Settings -->
     <div class="view" id="view-settings">
-      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.4</div></div>
+      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.5</div></div>
       <div class="settings-section">
         <div class="settings-title">貨幣</div>
         <div class="settings-row" onclick="showCurrencyPicker()">
@@ -282,17 +282,6 @@
         <input class="form-input" type="password" id="gemini-key-input" placeholder="貼上 Gemini API Key" style="margin-bottom:8px;">
         <button class="btn-primary btn-sm" onclick="saveGeminiKey()">儲存</button>
         <div id="gemini-key-status" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
-      </div>
-      <div class="settings-section">
-        <div class="settings-title">雲端備份（GitHub Gist）</div>
-        <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">資料自動備份到 GitHub Gist，任何裝置都能還原</div>
-        <input class="form-input" type="password" id="gist-token-input" placeholder="貼上 GitHub Personal Access Token" style="margin-bottom:8px;">
-        <button class="btn-primary btn-sm" onclick="saveGistToken()">儲存並立即備份</button>
-        <div style="margin-top:8px;display:flex;gap:8px;">
-          <button class="btn-secondary btn-sm" onclick="manualSync()">🔄 立即同步</button>
-          <button class="btn-secondary btn-sm" onclick="restoreFromGist()">⬇️ 從雲端還原</button>
-        </div>
-        <div id="gist-status" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
       </div>
       <div class="settings-section">
         <div class="settings-title">資料</div>
@@ -568,7 +557,7 @@ function syncDateDisplay(inputId, displayId) {
   const display = document.getElementById(displayId);
   if (val) {
     const parts = val.split('-');
-    display.textContent = `${parts[1]}/${parts[2]}`;
+    display.textContent = `${parts[0]}/${parts[1]}/${parts[2]}`;
   } else {
     display.textContent = '--/--';
   }
@@ -826,13 +815,10 @@ function renderSettings(){
   renderReminders();
   // Gemini key status
   const gkStatus = document.getElementById('gemini-key-status');
+  const gkInput = document.getElementById('gemini-key-input');
+  if (gkInput && db.settings.geminiKey) { gkInput.value = ''; gkInput.placeholder = '••••••••••••••••（已設定，重新貼上可覆蓋）'; }
   if (gkStatus && !gkStatus.textContent) gkStatus.innerHTML = db.settings.geminiKey
     ? '<span style="color:#4caf50;">✓ 已設定</span>'
-    : '<span style="color:var(--text3);">尚未設定</span>';
-  // Gist token status
-  const gistStatus = document.getElementById('gist-status');
-  if (gistStatus && !gistStatus.textContent) gistStatus.innerHTML = db.settings.gist?.token
-    ? `<span style="color:#4caf50;">✓ 已設定${db.settings.gist.gistId ? '，Gist ID: '+db.settings.gist.gistId.slice(0,8)+'…' : ''}</span>`
     : '<span style="color:var(--text3);">尚未設定</span>';
 }
 
@@ -1134,6 +1120,12 @@ function clearData(){
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach(overlay=>{
   overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
+  // swipe down to close
+  let startY=0;
+  overlay.addEventListener('touchstart',e=>{ startY=e.touches[0].clientY; },{passive:true});
+  overlay.addEventListener('touchend',e=>{
+    if(e.changedTouches[0].clientY - startY > 60) overlay.classList.remove('open');
+  },{passive:true});
 });
 
 // ── Gemini Key ──
@@ -1223,71 +1215,12 @@ function confirmAiRecords(records) {
     db.transactions.push(tx);
   });
   save();
-  syncToGist();
   document.getElementById('modal-ai').classList.remove('open');
   renderHome();
   if (currentView === 'transactions') renderTxList(new Date().getFullYear(), new Date().getMonth());
 }
 
-// ── Gist Sync ──
-function saveGistToken() {
-  const token = document.getElementById('gist-token-input').value.trim();
-  if (!token) return;
-  if (!db.settings.gist) db.settings.gist = {};
-  db.settings.gist.token = token;
-  save();
-  document.getElementById('gist-token-input').value = '';
-  syncToGist();
-}
-
-let gistSyncTimer = null;
-function save() {
-  localStorage.setItem('ledger_db', JSON.stringify(db));
-  clearTimeout(gistSyncTimer);
-  gistSyncTimer = setTimeout(syncToGist, 3000);
-}
-
-async function syncToGist() {
-  const gist = db.settings.gist;
-  if (!gist || !gist.token) return;
-  const el = document.getElementById('gist-status');
-  try {
-    const body = { description: 'Ledger App Backup', public: false, files: { 'ledger.json': { content: JSON.stringify(db) } } };
-    let res, data;
-    if (gist.gistId) {
-      res = await fetch(`https://api.github.com/gists/${gist.gistId}`, { method: 'PATCH', headers: { Authorization: `token ${gist.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    } else {
-      res = await fetch('https://api.github.com/gists', { method: 'POST', headers: { Authorization: `token ${gist.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      data = await res.json();
-      if (data.id) { db.settings.gist.gistId = data.id; localStorage.setItem('ledger_db', JSON.stringify(db)); }
-    }
-    if (el) el.textContent = `✓ 已備份（${new Date().toLocaleTimeString()}）`;
-  } catch(e) {
-    if (el) el.textContent = '備份失敗，請檢查 Token';
-  }
-}
-
-async function manualSync() { await syncToGist(); }
-
-async function restoreFromGist() {
-  const gist = db.settings.gist;
-  if (!gist || !gist.token || !gist.gistId) { alert('請先設定 Token 並完成一次備份'); return; }
-  const el = document.getElementById('gist-status');
-  if (el) el.textContent = '還原中…';
-  try {
-    const res = await fetch(`https://api.github.com/gists/${gist.gistId}`, { headers: { Authorization: `token ${gist.token}` } });
-    const data = await res.json();
-    const content = data.files['ledger.json']?.content;
-    if (!content) throw new Error('找不到備份資料');
-    if (!confirm('確定要用雲端資料覆蓋本機資料？')) return;
-    db = JSON.parse(content);
-    localStorage.setItem('ledger_db', JSON.stringify(db));
-    renderHome();
-    if (el) el.textContent = '✓ 還原成功';
-  } catch(e) {
-    if (el) el.textContent = `還原失敗：${e.message}`;
-  }
-}
+function save() { localStorage.setItem('ledger_db', JSON.stringify(db)); }
 
 // ── Emoji Picker ──
 const EMOJI_LIST = {
