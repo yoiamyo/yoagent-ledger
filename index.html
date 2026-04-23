@@ -63,6 +63,9 @@
 
     .fab { position:fixed; bottom:calc(var(--nav-h) + 16px); right:16px; width:56px; height:56px; border-radius:50%; background:var(--accent); color:#fff; font-size:28px; border:none; cursor:pointer; z-index:99; box-shadow:0 4px 20px rgba(124,108,240,.5); display:flex; align-items:center; justify-content:center; transition:transform .15s; }
     .fab:active { transform:scale(.93); }
+    .fab-ai { position:fixed; bottom:calc(var(--nav-h) + 84px); right:16px; width:56px; height:56px; border-radius:50%; background:#1a7a4a; color:#fff; font-size:14px; font-weight:700; border:none; cursor:pointer; z-index:99; box-shadow:0 4px 20px rgba(26,122,74,.5); display:flex; align-items:center; justify-content:center; transition:transform .15s; letter-spacing:0.5px; }
+    .fab-ai:active { transform:scale(.93); }
+    .fab-ai.no-key { background:var(--surface3); color:var(--text3); }
 
     .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; align-items:flex-end; justify-content:center; }
     .modal-overlay.open { display:flex; }
@@ -274,6 +277,24 @@
         <div id="reminder-list" style="margin-top:8px;"></div>
       </div>
       <div class="settings-section">
+        <div class="settings-title">AI 記帳（Gemini）</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">串接 Gemini API 後可用自然語言快速記帳</div>
+        <input class="form-input" type="password" id="gemini-key-input" placeholder="貼上 Gemini API Key" style="margin-bottom:8px;">
+        <button class="btn-primary btn-sm" onclick="saveGeminiKey()">儲存</button>
+        <div id="gemini-key-status" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">雲端備份（GitHub Gist）</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:10px;">資料自動備份到 GitHub Gist，任何裝置都能還原</div>
+        <input class="form-input" type="password" id="gist-token-input" placeholder="貼上 GitHub Personal Access Token" style="margin-bottom:8px;">
+        <button class="btn-primary btn-sm" onclick="saveGistToken()">儲存並立即備份</button>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button class="btn-secondary btn-sm" onclick="manualSync()">🔄 立即同步</button>
+          <button class="btn-secondary btn-sm" onclick="restoreFromGist()">⬇️ 從雲端還原</button>
+        </div>
+        <div id="gist-status" style="font-size:12px;color:var(--text3);margin-top:6px;"></div>
+      </div>
+      <div class="settings-section">
         <div class="settings-title">資料</div>
         <div class="settings-row" onclick="exportData()"><span class="settings-row-label">匯出資料 (JSON)</span><span>›</span></div>
         <div class="settings-row" onclick="clearData()"><span class="settings-row-label" style="color:var(--expense)">清除所有資料</span></div>
@@ -304,6 +325,7 @@
     </button>
   </nav>
   <button class="fab" onclick="openAddModal()" id="fab">＋</button>
+  <button class="fab-ai" onclick="openAiModal()" id="fab-ai">AI</button>
 </div>
 
 <!-- Modal: Add Transaction -->
@@ -436,6 +458,18 @@
   </div>
 </div>
 
+<!-- AI 記帳 Modal -->
+<div class="modal-overlay" id="modal-ai" onclick="closeAiModal(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">AI 快速記帳</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:12px;">用自然語言描述，AI 自動辨識並記帳</div>
+    <textarea id="ai-input" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;color:var(--text);font-size:15px;resize:none;height:100px;outline:none;font-family:inherit;" placeholder="例：午餐吃拉麵150，下午買咖啡80，買AirPods 4500分12期"></textarea>
+    <button class="btn-primary" style="margin-top:10px;width:100%;" onclick="runAiParse()">解析並記帳</button>
+    <div id="ai-result" style="margin-top:12px;"></div>
+  </div>
+</div>
+
 <!-- Emoji Picker -->
 <div class="emoji-picker-overlay" id="emoji-picker-overlay" onclick="closeEmojiPicker(event)">
   <div class="emoji-picker">
@@ -496,7 +530,6 @@ let editingSubId = null;
 let selectedCat = null;
 let selectedSubCat = null;
 
-function save() { localStorage.setItem('ledger_db', JSON.stringify(db)); }
 function load() {
   const raw = localStorage.getItem('ledger_db');
   if (raw) {
@@ -579,6 +612,7 @@ function switchView(name, el) {
   if (el) el.classList.add('active');
   currentView = name;
   document.getElementById('fab').style.display = (name==='subscriptions'||name==='settings') ? 'none' : 'flex';
+  document.getElementById('fab-ai').style.display = (name==='subscriptions'||name==='settings') ? 'none' : 'flex';
   renderView(name);
 }
 function renderView(name) {
@@ -1089,6 +1123,155 @@ document.querySelectorAll('.modal-overlay').forEach(overlay=>{
   overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
 });
 
+// ── Gemini Key ──
+function saveGeminiKey() {
+  const key = document.getElementById('gemini-key-input').value.trim();
+  if (!key) return;
+  db.settings.geminiKey = key;
+  save();
+  document.getElementById('gemini-key-status').textContent = '✓ 已儲存';
+  document.getElementById('gemini-key-input').value = '';
+  updateFabAi();
+}
+function updateFabAi() {
+  const btn = document.getElementById('fab-ai');
+  if (btn) btn.classList.toggle('no-key', !db.settings.geminiKey);
+}
+
+// ── AI Modal ──
+function openAiModal() {
+  if (!db.settings.geminiKey) {
+    alert('請先在設定頁填入 Gemini API Key');
+    return;
+  }
+  document.getElementById('ai-input').value = '';
+  document.getElementById('ai-result').innerHTML = '';
+  document.getElementById('modal-ai').classList.add('open');
+}
+function closeAiModal(e) {
+  if (e.target === document.getElementById('modal-ai')) document.getElementById('modal-ai').classList.remove('open');
+}
+
+async function runAiParse() {
+  const text = document.getElementById('ai-input').value.trim();
+  if (!text) return;
+  const resEl = document.getElementById('ai-result');
+  resEl.innerHTML = '<div style="color:var(--text2);font-size:13px;">解析中…</div>';
+
+  const cats = db.categories.map(c => c.name).join('、');
+  const prompt = `你是記帳助理。請把以下文字解析成多筆記帳記錄，回傳 JSON 陣列（只回 JSON，不要其他文字）。
+每筆格式：{"type":"expense"或"income","amount":數字,"note":"備註","category":"類別名稱","installment":null或{"total":期數}}
+可用類別：${cats}，若不符合請選「其他」。
+文字：${text}`;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${db.settings.geminiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const raw = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
+    const records = JSON.parse(raw);
+    showAiPreview(records);
+  } catch(e) {
+    resEl.innerHTML = `<div style="color:var(--expense);font-size:13px;">解析失敗：${e.message}</div>`;
+  }
+}
+
+function showAiPreview(records) {
+  const resEl = document.getElementById('ai-result');
+  if (!records.length) { resEl.innerHTML = '<div style="color:var(--text2);font-size:13px;">沒有辨識到記錄</div>'; return; }
+  let html = '<div style="font-size:13px;color:var(--text2);margin-bottom:8px;">辨識結果，確認後儲存：</div>';
+  records.forEach((r, i) => {
+    const sign = r.type === 'income' ? '+' : '-';
+    const color = r.type === 'income' ? 'var(--income)' : 'var(--expense)';
+    const inst = r.installment ? ` （分${r.installment.total}期）` : '';
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div><div style="font-size:14px;">${r.category} · ${r.note||''}${inst}</div></div>
+      <div style="font-size:16px;font-weight:700;color:${color};">${sign}${r.amount}</div>
+    </div>`;
+  });
+  html += `<button class="btn-primary" style="margin-top:12px;width:100%;" onclick="confirmAiRecords(${JSON.stringify(records).replace(/"/g,'&quot;')})">全部存入</button>`;
+  resEl.innerHTML = html;
+}
+
+function confirmAiRecords(records) {
+  const today = new Date().toISOString().split('T')[0];
+  records.forEach(r => {
+    const cat = db.categories.find(c => c.name === r.category) || db.categories[db.categories.length - 1];
+    const tx = { id: Date.now() + Math.random(), type: r.type, amount: Number(r.amount), originalAmount: Number(r.amount), currency: getBase(), categoryId: cat.id, note: r.note || '', date: today };
+    if (r.installment) tx.installment = { total: r.installment.total, current: 1 };
+    db.transactions.push(tx);
+  });
+  save();
+  syncToGist();
+  document.getElementById('modal-ai').classList.remove('open');
+  renderHome();
+  if (currentView === 'transactions') renderTxList(new Date().getFullYear(), new Date().getMonth());
+}
+
+// ── Gist Sync ──
+function saveGistToken() {
+  const token = document.getElementById('gist-token-input').value.trim();
+  if (!token) return;
+  if (!db.settings.gist) db.settings.gist = {};
+  db.settings.gist.token = token;
+  save();
+  document.getElementById('gist-token-input').value = '';
+  syncToGist();
+}
+
+let gistSyncTimer = null;
+function save() {
+  localStorage.setItem('ledger_db', JSON.stringify(db));
+  clearTimeout(gistSyncTimer);
+  gistSyncTimer = setTimeout(syncToGist, 3000);
+}
+
+async function syncToGist() {
+  const gist = db.settings.gist;
+  if (!gist || !gist.token) return;
+  const el = document.getElementById('gist-status');
+  try {
+    const body = { description: 'Ledger App Backup', public: false, files: { 'ledger.json': { content: JSON.stringify(db) } } };
+    let res, data;
+    if (gist.gistId) {
+      res = await fetch(`https://api.github.com/gists/${gist.gistId}`, { method: 'PATCH', headers: { Authorization: `token ${gist.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } else {
+      res = await fetch('https://api.github.com/gists', { method: 'POST', headers: { Authorization: `token ${gist.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      data = await res.json();
+      if (data.id) { db.settings.gist.gistId = data.id; localStorage.setItem('ledger_db', JSON.stringify(db)); }
+    }
+    if (el) el.textContent = `✓ 已備份（${new Date().toLocaleTimeString()}）`;
+  } catch(e) {
+    if (el) el.textContent = '備份失敗，請檢查 Token';
+  }
+}
+
+async function manualSync() { await syncToGist(); }
+
+async function restoreFromGist() {
+  const gist = db.settings.gist;
+  if (!gist || !gist.token || !gist.gistId) { alert('請先設定 Token 並完成一次備份'); return; }
+  const el = document.getElementById('gist-status');
+  if (el) el.textContent = '還原中…';
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gist.gistId}`, { headers: { Authorization: `token ${gist.token}` } });
+    const data = await res.json();
+    const content = data.files['ledger.json']?.content;
+    if (!content) throw new Error('找不到備份資料');
+    if (!confirm('確定要用雲端資料覆蓋本機資料？')) return;
+    db = JSON.parse(content);
+    localStorage.setItem('ledger_db', JSON.stringify(db));
+    renderHome();
+    if (el) el.textContent = '✓ 還原成功';
+  } catch(e) {
+    if (el) el.textContent = `還原失敗：${e.message}`;
+  }
+}
+
 // ── Emoji Picker ──
 const EMOJI_LIST = {
   '笑臉與情感': ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','🫠','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🫂','🤭','🫡','🤫','🤔','🫤','🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','🫨','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','🫤','😟','🙁','☹️','😮','😯','😲','😳','🥺','🫣','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','😿','😾'],
@@ -1144,6 +1327,7 @@ processSubscriptions();
 scheduleReminders();
 renderHome();
 fetchRates();
+updateFabAi();
 </script>
 </body>
 </html>
