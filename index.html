@@ -824,6 +824,16 @@ function renderSettings(){
   renderRatesList();
   renderCatManager();
   renderReminders();
+  // Gemini key status
+  const gkStatus = document.getElementById('gemini-key-status');
+  if (gkStatus) gkStatus.innerHTML = db.settings.geminiKey
+    ? '<span style="color:#4caf50;">✓ 已設定</span>'
+    : '<span style="color:var(--text3);">尚未設定</span>';
+  // Gist token status
+  const gistStatus = document.getElementById('gist-status');
+  if (gistStatus && !gistStatus.textContent) gistStatus.innerHTML = db.settings.gist?.token
+    ? `<span style="color:#4caf50;">✓ 已設定${db.settings.gist.gistId ? '，Gist ID: '+db.settings.gist.gistId.slice(0,8)+'…' : ''}</span>`
+    : '<span style="color:var(--text3);">尚未設定</span>';
 }
 
 function renderRatesList(){
