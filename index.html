@@ -242,7 +242,7 @@
 
     <!-- Settings -->
     <div class="view" id="view-settings">
-      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.8</div></div>
+      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.9</div></div>
       <div class="settings-section">
         <div class="settings-title">貨幣</div>
         <div class="settings-row" onclick="showCurrencyPicker()">
@@ -982,7 +982,7 @@ function saveTransaction(){
   }
   const hasFx = origCur !== getBase();
   if(editingTxId){
-    const idx=db.transactions.findIndex(t=>t.id===editingTxId);
+    const idx=db.transactions.findIndex(t=>String(t.id)===String(editingTxId));
     if(idx!==-1) db.transactions[idx]={ ...db.transactions[idx], amount, originalAmount:hasFx?origAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat, installment };
   } else {
     db.transactions.push({ id:'tx_'+Date.now(), amount, originalAmount:hasFx?origAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat||db.categories[0]?.id, installment, createdAt:Date.now() });
@@ -992,7 +992,7 @@ function saveTransaction(){
 
 function deleteTransaction(){
   if(!editingTxId) return;
-  db.transactions=db.transactions.filter(t=>t.id!==editingTxId);
+  db.transactions=db.transactions.filter(t=>String(t.id)!==String(editingTxId));
   save(); closeModal('modal-add'); renderView(currentView);
 }
 
@@ -1210,7 +1210,7 @@ function confirmAiRecords(records) {
   const today = new Date().toISOString().split('T')[0];
   records.forEach(r => {
     const cat = db.categories.find(c => c.name === r.category) || db.categories[db.categories.length - 1];
-    const tx = { id: Date.now() + Math.random(), type: r.type, amount: Number(r.amount), originalAmount: Number(r.amount), currency: getBase(), categoryId: cat.id, note: r.note || '', date: today };
+    const tx = { id: 'tx_'+Date.now()+'_'+Math.floor(Math.random()*9999), type: r.type, amount: Number(r.amount), originalAmount: Number(r.amount), currency: getBase(), categoryId: cat.id, note: r.note || '', date: today };
     if (r.installment) tx.installment = { total: r.installment.total, current: 1 };
     db.transactions.push(tx);
   });
