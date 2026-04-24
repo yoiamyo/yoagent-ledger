@@ -242,7 +242,7 @@
 
     <!-- Settings -->
     <div class="view" id="view-settings">
-      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.9</div></div>
+      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v2.0</div></div>
       <div class="settings-section">
         <div class="settings-title">貨幣</div>
         <div class="settings-row" onclick="showCurrencyPicker()">
@@ -451,10 +451,9 @@
 <div class="modal-overlay" id="modal-ai" onclick="closeAiModal(event)">
   <div class="modal">
     <div class="modal-handle"></div>
-    <div class="modal-title">AI 快速記帳</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:12px;">用自然語言描述，AI 自動辨識並記帳</div>
-    <textarea id="ai-input" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;color:var(--text);font-size:15px;resize:none;height:100px;outline:none;font-family:inherit;" placeholder="例：午餐吃拉麵150，下午買咖啡80，買AirPods 4500分12期"></textarea>
-    <button class="btn-primary" style="margin-top:10px;width:100%;" onclick="runAiParse()">解析並記帳</button>
+    <div class="modal-title">今天花了什麼？</div>
+    <textarea id="ai-input" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;color:var(--text);font-size:15px;resize:none;height:100px;outline:none;font-family:inherit;" placeholder="例：午餐拉麵150，咖啡80，AirPods 4500分12期"></textarea>
+    <button class="btn-primary" style="margin-top:10px;width:100%;" onclick="runAiParse()">輸入</button>
     <div id="ai-result" style="margin-top:12px;"></div>
   </div>
 </div>
@@ -653,7 +652,7 @@ function renderHome() {
   renderChart();
   const recent = [...db.transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
   const el = document.getElementById('home-recent');
-  el.innerHTML = recent.length ? recent.map(t=>txHTML(t)).join('') : '<div style="text-align:center;color:var(--text3);padding:16px;font-size:14px;">還沒有紀錄</div>';
+  el.innerHTML = recent.length ? `<div class="card card-sm">${recent.map(t=>txHTML(t,true)).join('')}</div>` : '<div style="text-align:center;color:var(--text3);padding:16px;font-size:14px;">還沒有紀錄</div>';
 }
 
 // ── Chart ──
@@ -737,7 +736,7 @@ function txHTML(t, clickable=false) {
   const cat = db.categories.find(c=>c.id===t.categoryId)||{icon:'📦',name:'其他'};
   const sign = t.type==='income'?'+':'-';
   const onclick = clickable?`onclick="editTransaction('${t.id}')"` :'';
-  const instBadge = t.installment?`<span class="badge">${t.installment.current}/${t.installment.total}期</span>`:'';
+  const instBadge = t.installment?`<span class="badge">${t.installment.current}/${t.installment.total}期 共${fmt(t.installment.totalBase||t.amount*t.installment.total)}</span>`:'';
   const hasFx = t.currency && t.currency !== getBase() && t.originalAmount;
   const origLine = hasFx ? `<span class="original">${fmtOrig(t.originalAmount, t.currency)}</span>` : '';
   return `<div class="tx-item" ${onclick} style="${clickable?'cursor:pointer':''}">
@@ -975,17 +974,20 @@ function saveTransaction(){
   const type=getSelectedType();
   const isInstallment=document.getElementById('input-installment').checked;
   let installment=null;
+  let finalAmount=amount, finalOrigAmt=origAmt;
+  const hasFx = origCur !== getBase();
   if(isInstallment){
     const total=parseInt(document.getElementById('input-periods').value)||1;
     const current=parseInt(document.getElementById('input-current-period').value)||1;
-    installment={total,current};
+    installment={total,current,totalAmount:origAmt,totalBase:amount};
+    finalOrigAmt=Math.round((origAmt/total)*100)/100;
+    finalAmount=toBase(finalOrigAmt,origCur);
   }
-  const hasFx = origCur !== getBase();
   if(editingTxId){
     const idx=db.transactions.findIndex(t=>String(t.id)===String(editingTxId));
-    if(idx!==-1) db.transactions[idx]={ ...db.transactions[idx], amount, originalAmount:hasFx?origAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat, installment };
+    if(idx!==-1) db.transactions[idx]={ ...db.transactions[idx], amount:finalAmount, originalAmount:hasFx?finalOrigAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat, installment };
   } else {
-    db.transactions.push({ id:'tx_'+Date.now(), amount, originalAmount:hasFx?origAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat||db.categories[0]?.id, installment, createdAt:Date.now() });
+    db.transactions.push({ id:'tx_'+Date.now(), amount:finalAmount, originalAmount:hasFx?finalOrigAmt:null, currency:hasFx?origCur:null, date, note, type, categoryId:selectedCat||db.categories[0]?.id, installment, createdAt:Date.now() });
   }
   save(); closeModal('modal-add'); renderView(currentView);
 }
@@ -1202,7 +1204,7 @@ function showAiPreview(records) {
       <div style="font-size:16px;font-weight:700;color:${color};">${sign}${r.amount}</div>
     </div>`;
   });
-  html += `<button class="btn-primary" style="margin-top:12px;width:100%;" onclick="confirmAiRecords(${JSON.stringify(records).replace(/"/g,'&quot;')})">全部存入</button>`;
+  html += `<button class="btn-primary" style="margin-top:12px;width:100%;" onclick="confirmAiRecords(${JSON.stringify(records).replace(/"/g,'&quot;')})">確認</button>`;
   resEl.innerHTML = html;
 }
 
