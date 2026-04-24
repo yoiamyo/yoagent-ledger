@@ -242,7 +242,7 @@
 
     <!-- Settings -->
     <div class="view" id="view-settings">
-      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.7</div></div>
+      <div class="page-header"><div class="page-title">設定</div><div style="font-size:12px;color:var(--text3);">v1.8</div></div>
       <div class="settings-section">
         <div class="settings-title">貨幣</div>
         <div class="settings-row" onclick="showCurrencyPicker()">
@@ -930,7 +930,7 @@ function openAddModal(date){
 }
 
 function editTransaction(id){
-  const t=db.transactions.find(t=>t.id===id); if(!t) return;
+  const t=db.transactions.find(t=>String(t.id)===String(id)); if(!t) return;
   editingTxId=id; selectedCat=t.categoryId;
   document.getElementById('add-modal-title').textContent='編輯記錄';
   const origAmt = t.originalAmount || t.amount;
